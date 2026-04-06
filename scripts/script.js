@@ -3183,134 +3183,6 @@ async function loadAttendanceList() {
     } catch (e) { container.innerHTML = 'Erro ao carregar.'; }
 }
 
-async function openMeetingReviewModal() {
-    openModal('modal-meeting-review');
-    const select = document.getElementById('review-date-filter');
-    if (!select) return;
-    select.innerHTML = '<option>Carregando...</option>';
-    try {
-        const snap = await database.ref('meeting/history').once('value');
-        const data = snap.val() || {};
-        const dates = Object.keys(data).sort().reverse();
-        if (dates.length === 0) {
-            select.innerHTML = '<option value="">Nenhuma data</option>';
-            return;
-        }
-        select.innerHTML = dates.map(d => `<option value="${d}">${formatDate(d)}</option>`).join('');
-        // Carrega automático se tiver data
-        if (select.value) loadMeetingReview();
-    } catch (e) { select.innerHTML = '<option value="">Erro</option>'; }
-}
-
-async function loadMeetingReview() {
-    const dateVal = document.getElementById('review-date-filter')?.value;
-    const container = document.getElementById('review-list-container');
-    if (!container || !dateVal || dateVal.includes('...')) return;
-    container.innerHTML = '<p style="text-align:center;padding:20px;opacity:0.5;">Processando dados...</p>';
-    try {
-        const snap = await database.ref(`meeting/history/${dateVal}`).once('value');
-        const data = snap.val() || {};
-        const drivers = Object.values(data);
-        if (drivers.length === 0) {
-            container.innerHTML = '<div style="text-align:center;padding:40px;opacity:0.5;">Nenhuma rota registrada nesta data.</div>';
-            return;
-        }
-        container.innerHTML = drivers.map(d => {
-            try {
-                const passCount = d.passengers ? (Array.isArray(d.passengers) ? d.passengers.length : Object.keys(d.passengers).length) : 0;
-                return `
-                    <div class="glass-panel" style="padding:15px;margin-bottom:12px;border-left:4px solid var(--gold);">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                            <div>
-                                <div style="font-weight:800;font-size:1rem;">🚗 ${d.driverName || 'Motorista'}</div>
-                                <div style="font-size:0.7rem;opacity:0.5;margin-top:2px;">
-                                    ${passCount} passageiros • ${d.vehicleType || 'Carro'}
-                                </div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-weight:900;color:var(--gold);font-size:1.1rem;">${(Number(d.totalKm) || 0).toFixed(1)} KM</div>
-                                <div style="font-size:0.7rem;font-weight:700;color:var(--success);">R$ ${(Number(d.reimbursement) || 0).toFixed(2)}</div>
-                            </div>
-                        </div>
-                        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
-                            <button class="btn btn-unigold" style="font-size:0.72rem;padding:6px 14px;flex:1;" 
-                                onclick="showDriverRouteDetail('${d.driverUid}', '${dateVal}', '${d.driverName}')">
-                                <i data-lucide="map-pin" style="width:14px;"></i> Ver Rota no Mapa
-                            </button>
-                            ${d.completedAt ? `<span style="font-size:0.6rem;opacity:0.4;">Ok ${_fmtTime(d.completedAt)}</span>` : '<span style="font-size:0.6rem;color:var(--success);font-weight:800;">ATIVO</span>'}
-                        </div>
-                    </div>
-                `;
-            } catch (err) { return ''; }
-        }).join('');
-        if (window.lucide) lucide.createIcons({ root: container });
-    } catch (e) { 
-        console.error('[Gestor] Erro ao carregar histórico:', e);
-        container.innerHTML = 'Erro ao carregar lista.'; 
-    }
-}
-
-async function showDriverRouteDetail(driverUid, dateVal, driverName) {
-    if (typeof openModal === 'function') openModal('modal-driver-route-detail');
-    const container = document.getElementById('driver-full-route-info'); // Se existir no detalhe
-    if (!container) return;
-    container.innerHTML = '<p style="text-align:center;padding:20px;opacity:0.5;">Carregando trajados...</p>';
-
-    try {
-        const snap = await database.ref(`meeting/history/${dateVal}/${driverUid}`).once('value');
-        const h = snap.val();
-        if (!h) return;
-
-        container.innerHTML = `
-            <div style="font-weight:800;color:var(--gold);margin-bottom:10px;font-size:1.1rem;">👤 ${h.driverName}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
-                <div class="glass-panel" style="padding:10px;text-align:center;">
-                    <div style="opacity:0.5;font-size:0.6rem;">KMs ACUMULADOS</div>
-                    <div style="font-weight:800;font-size:1.1rem;">${(h.totalKm || 0).toFixed(1)}</div>
-                </div>
-                <div class="glass-panel" style="padding:10px;text-align:center;">
-                    <div style="opacity:0.5;font-size:0.6rem;">REEMBOLSO</div>
-                    <div style="font-weight:800;font-size:1.1rem;color:var(--success);">R$ ${(h.reimbursement || 0).toFixed(2)}</div>
-                </div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:20px;">
-                <div>
-                    <div style="font-size:0.75rem;font-weight:800;margin-bottom:8px;color:var(--gold);">1. TRAJETO DE IDA (REAL)</div>
-                    <div id="map-arrival" class="glass-panel" style="height:180px;border-radius:12px;overflow:hidden;background:#000;">
-                        ${!h.arrivalRoute ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.7rem;opacity:0.3;">Aguardando...</div>' : ''}
-                    </div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem;font-weight:800;margin-bottom:8px;color:var(--gold);">2. TRAJETO DE VOLTA (REAL)</div>
-                    <div id="map-return" class="glass-panel" style="height:180px;border-radius:12px;overflow:hidden;background:#000;">
-                        ${!h.returnRoute ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.7rem;opacity:0.3;">Aguardando...</div>' : ''}
-                    </div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem;font-weight:800;margin-bottom:8px;opacity:0.6;">3. TRAJETO PREVISTO (SISTEMA)</div>
-                    <div id="map-predicted" class="glass-panel" style="height:180px;border-radius:12px;overflow:hidden;background:#000;opacity:0.7;">
-                    </div>
-                </div>
-            </div>
-        `;
-
-        setTimeout(() => {
-            const draw = (id, pts, color) => {
-                const el = document.getElementById(id);
-                if (!el || !pts || !pts.length) return;
-                const m = new google.maps.Map(el, { zoom: 12, center: pts[0], styles: mapDarkStyle, disableDefaultUI: true });
-                new google.maps.Polyline({ path: pts, map: m, strokeColor: color, strokeWeight: 3 });
-                const b = new google.maps.LatLngBounds(); pts.forEach(p => b.extend(p)); m.fitBounds(b);
-                new google.maps.Marker({ position: pts[0], map: m, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: '#10b981', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1 } });
-                new google.maps.Marker({ position: pts[pts.length - 1], map: m, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: '#ef4444', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1 } });
-            };
-            draw('map-arrival', h.arrivalRoute, '#3b82f6');
-            draw('map-return', h.returnRoute, '#10b981');
-            draw('map-predicted', h.predictedRoute, '#BF9A56');
-        }, 400);
-
-    } catch (e) { console.error("Erro detalhes rota", e); }
-}
 
 function initMeetingGestor() {
     initGestorAlerts();
@@ -3390,8 +3262,9 @@ async function viewDriverRouteOnMap(driverUid, dateVal) {
     if (!driverUid || !dateVal) return;
 
     try {
-        const snap = await database.ref(`meeting/history/${dateVal}/${driverUid}/realRoute`).once('value');
-        const route = snap.val() || [];
+        const snap = await supabase.database().ref(`meeting/history/${dateVal}/${driverUid}`).once('value');
+        const h = snap.val();
+        const route = _getCombinedRoute(h);
 
         if (route.length === 0) {
             showNotification('Não há dados de trajeto para este motorista.', 'info');
@@ -3565,6 +3438,11 @@ function _fmtDate(str) {
 }
 
 function _gMaps() { return window.google?.maps; }
+
+/** Combina rotas de ida e volta do motorista num único array de pontos */
+function _getCombinedRoute(d) {
+    return [...(d?.arrivalRoute || []), ...(d?.returnRoute || [])];
+}
 
 function _haversineKm(pts) {
     let km = 0;
@@ -3743,7 +3621,7 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
         }
 
         setTimeout(() => {
-            _renderRouteMapMeeting('real-route-map', d.realRoute || [], '#BF9A56', (calcKm) => {
+            _renderRouteMapMeeting('real-route-map', _getCombinedRoute(d), '#BF9A56', (calcKm) => {
                 const kmEl = document.getElementById('real-km-val');
                 const payEl = document.getElementById('real-pay-val');
                 if (kmEl) kmEl.textContent = (savedKm || calcKm).toFixed(2) + ' km';
@@ -3753,7 +3631,7 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
 
         const stopsEl = document.getElementById('real-route-stops');
         if (stopsEl) {
-            const keyStops = (d.realRoute || []).filter(s => s.type !== 'waypoint');
+            const keyStops = _getCombinedRoute(d).filter(s => s.type !== 'waypoint');
             if (keyStops.length) {
                 stopsEl.innerHTML =
                     '<div style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Eventos Registrados</div>' +
@@ -3804,7 +3682,8 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
             }
         }
 
-        const realKm = savedKm || _haversineKm((d.realRoute || []).filter(p => p.lat));
+        const realRoute = _getCombinedRoute(d);
+        const realKm = savedKm || _haversineKm(realRoute.filter(p => p.lat));
         const predKm = _haversineKm(predRoute.filter(p => p.lat));
         if (realKm > 0 && predKm > 0) {
             const diffKm = realKm - predKm;
