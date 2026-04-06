@@ -3264,7 +3264,7 @@ async function viewDriverRouteOnMap(driverUid, dateVal) {
     try {
         const snap = await supabase.database().ref(`meeting/history/${dateVal}/${driverUid}`).once('value');
         const h = snap.val();
-        const route = [...(h?.arrivalRoute || []), ...(h?.returnRoute || [])];
+        const route = _getCombinedRoute(h);
 
         if (route.length === 0) {
             showNotification('Não há dados de trajeto para este motorista.', 'info');
@@ -3438,6 +3438,11 @@ function _fmtDate(str) {
 }
 
 function _gMaps() { return window.google?.maps; }
+
+/** Combina rotas de ida e volta do motorista num único array de pontos */
+function _getCombinedRoute(d) {
+    return [...(d?.arrivalRoute || []), ...(d?.returnRoute || [])];
+}
 
 function _haversineKm(pts) {
     let km = 0;
@@ -3616,7 +3621,7 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
         }
 
         setTimeout(() => {
-            _renderRouteMapMeeting('real-route-map', [...(d.arrivalRoute || []), ...(d.returnRoute || [])], '#BF9A56', (calcKm) => {
+            _renderRouteMapMeeting('real-route-map', _getCombinedRoute(d), '#BF9A56', (calcKm) => {
                 const kmEl = document.getElementById('real-km-val');
                 const payEl = document.getElementById('real-pay-val');
                 if (kmEl) kmEl.textContent = (savedKm || calcKm).toFixed(2) + ' km';
@@ -3626,7 +3631,7 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
 
         const stopsEl = document.getElementById('real-route-stops');
         if (stopsEl) {
-            const keyStops = ([...(d.arrivalRoute || []), ...(d.returnRoute || [])]).filter(s => s.type !== 'waypoint');
+            const keyStops = _getCombinedRoute(d).filter(s => s.type !== 'waypoint');
             if (keyStops.length) {
                 stopsEl.innerHTML =
                     '<div style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Eventos Registrados</div>' +
@@ -3677,7 +3682,7 @@ async function showDriverRouteDetail(driverUid, dateVal, driverName) {
             }
         }
 
-        const realRoute = [...(d.arrivalRoute || []), ...(d.returnRoute || [])];
+        const realRoute = _getCombinedRoute(d);
         const realKm = savedKm || _haversineKm(realRoute.filter(p => p.lat));
         const predKm = _haversineKm(predRoute.filter(p => p.lat));
         if (realKm > 0 && predKm > 0) {
